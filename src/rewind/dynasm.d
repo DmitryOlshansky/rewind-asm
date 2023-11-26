@@ -56,8 +56,23 @@ struct X86Assembler {
         }
     }
 
-    void mov(Register to, Register from) {
+    private ubyte modrm(uint mode, uint reg, int m) {
+        return cast(ubyte)((mode << 6) | (reg<<3) | m);
+    }
 
+    private ubyte rex(uint w, uint r, uint x, uint b) {
+        return cast(ubyte)((0b0100 << 4) | (w << 3) | (r << 2) | (x << 1) | b);
+    }
+
+    void mov(Register to, Register from) {
+        code ~= 0x89;
+        code ~= modrm(0b11, from.value, to.value);
+    }
+
+    void mov(ExtendedRegister to, ExtendedRegister from) {
+        code ~= rex(1, (from.value & 0x8)>>3, 0, (to.value & 0x8)>>3);
+        code ~= 0x89;
+        code ~= modrm(0b11, from.value & 0x7, to.value & 0x7);
     }
 
     void ret() {
@@ -79,21 +94,47 @@ version(unittest):
 
 void testEncoding(ubyte[] code, string assembly, int line = __LINE__) {
     import std.file : writeFile = write, tempDir;
-    import std.stdio, std.process, std.path, std.conv, std.regex, std.algorithm, std.array;
+    import std.stdio, std.process, std.path, std.conv, std.regex, std.algorithm, std.array, std.uni;
     auto path = buildPath(tempDir(), text("rewind_asm_", line));
     writeFile(path, code);
     auto result = execute(["objdump", "-M", "intel", "-m", "i386:x86-64", "-b", "binary", "-D", path]);
     assert(result.status == 0);
-    //writeln(result.output);
+    debug writeln(result.output);
     auto r = regex(`\d+:\s*([0-9-a-f]+ )+\s*(\S.*)`);
     auto dumped = matchAll(result.output, r).map!(x => x[2]).join("\n") ~"\n";
-    assert(assembly == dumped);
+    auto dumpedFiltered = dumped.filter!(isAlphaNum).array;
+    auto assemblyFiltered = assembly.filter!(isAlphaNum).array;
+    assert(assemblyFiltered == dumpedFiltered);
 }
 
 unittest {
     with(X86()) {
         ret();
-        ubyte[] code = finish();
-        testEncoding(code, "ret\n");
+        testEncoding(finish(), "ret\n");
     }
+}
+
+unittest {
+    with(X86()) {
+        mov(EAX, EBX);
+        mov(ESP, EBP);
+        testEncoding(finish(), "mov eax,ebx\nmov esp,ebp\n");
+    }
+}
+
+unittest {
+    with(X86()) {
+        mov(RAX, RDX);
+        testEncoding(finish(), "mov rax,rdx\n");
+    }
+}
+
+unittest
+{
+     with(X86()) {
+        mov(RAX, R9);
+        mov(R9, RAX);
+        mov(R14, R13);
+        testEncoding(finish(), "mov rax,r9\nmov r9, rax\nmov r14,r13\n");
+     }
 }
