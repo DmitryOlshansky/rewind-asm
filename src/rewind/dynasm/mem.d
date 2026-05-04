@@ -17,7 +17,7 @@ void[] reallocateVM(void[] mapping, size_t newSize) {
 
 version (Posix) {
     import core.sys.posix.sys.mman;
-    import core.sys.unistd;
+    import core.sys.posix.unistd;
 
     void[] allocateVM(size_t size) {
         enforce(size % pageSize == 0, "allocateVM only accepts multiple of page size");
@@ -34,7 +34,7 @@ version (Posix) {
     }
 
     void deallocateVM(void[] mapping) {
-        int res = munmap(buffer.ptr, buffer.length);
+        int res = munmap(mapping.ptr, mapping.length);
         enforce(res == 0, "munmap failed to unmap memory");
     }
 
